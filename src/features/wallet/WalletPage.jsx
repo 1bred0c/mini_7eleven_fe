@@ -9,6 +9,7 @@ import {
   Stack,
   Alert,
   Box,
+  Avatar,
   Table,
   TableBody,
   TableCell,
