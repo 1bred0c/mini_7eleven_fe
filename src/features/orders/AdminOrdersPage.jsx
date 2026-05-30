@@ -266,7 +266,7 @@ const AdminOrdersPage = () => {
           <TableRow>
             <TableCell>Order ID</TableCell>
             <TableCell>Date</TableCell>
-            <TableCell>Account ID</TableCell>
+            <TableCell>Customer</TableCell>
             <TableCell>Total Amount</TableCell>
             <TableCell>Order Status</TableCell>
             <TableCell>Payment Status</TableCell>
@@ -281,7 +281,14 @@ const AdminOrdersPage = () => {
 
               <TableCell>{formatDateTime(order.createdAt)}</TableCell>
 
-              <TableCell>ID: {order.accountId || "User"}</TableCell>
+              <TableCell>
+  <Typography variant="body2" fontWeight={600}>
+    {order.customerName || "Unknown customer"}
+  </Typography>
+  <Typography variant="caption" color="text.secondary">
+    Account ID: {order.accountId || "N/A"}
+  </Typography>
+</TableCell>
 
               <TableCell sx={{ fontWeight: 700, color: "secondary.main" }}>
                 {formatCurrency(order.totalAmount)}
@@ -440,11 +447,18 @@ const AdminOrdersPage = () => {
 
                   <Box sx={{ bgcolor: "action.hover", p: 2, borderRadius: 1 }}>
                     <Typography variant="caption" color="text.secondary" display="block">
-                      Client ID Account:
-                    </Typography>
-                    <Typography variant="body2" fontWeight={600}>
-                      {selectedOrder.accountId || "Anonymous"}
-                    </Typography>
+  Customer:
+</Typography>
+<Typography variant="body2" fontWeight={600}>
+  {selectedOrder.customerName || "Unknown customer"}
+</Typography>
+
+<Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+  Account ID:
+</Typography>
+<Typography variant="body2" fontWeight={600}>
+  {selectedOrder.accountId || "N/A"}
+</Typography>
                     <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
                       Payment Method Used:
                     </Typography>
