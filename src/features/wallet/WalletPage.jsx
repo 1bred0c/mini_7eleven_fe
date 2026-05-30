@@ -22,6 +22,7 @@ import {
 import WalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import AddCardIcon from "@mui/icons-material/AddCard";
 import HistoryIcon from "@mui/icons-material/History";
+
 import { walletApi } from "../../api/walletApi";
 import { formatCurrency, formatDateTime } from "../../utils/format";
 import StatusChip from "../../components/StatusChip";
@@ -32,11 +33,11 @@ import PageHeader from "../../components/PageHeader";
 const WalletPage = () => {
   const [wallet, setWallet] = useState(null);
   const [transactions, setTransactions] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [noWallet, setNoWallet] = useState(false);
 
-  // Top up state
   const [topUpAmount, setTopUpAmount] = useState("");
   const [topUpDesc, setTopUpDesc] = useState("");
   const [topUpError, setTopUpError] = useState("");
@@ -47,31 +48,72 @@ const WalletPage = () => {
     fetchWalletAndTransactions();
   }, []);
 
+  const isWalletNotFoundError = (err) => {
+    const status = err?.status || err?.response?.status;
+    const message = (err?.message || err?.response?.data?.message || "").toLowerCase();
+
+    // Backend hiện tại có thể trả 500 khi user chưa mở ví.
+    // FE tạm coi 404/500 hoặc message liên quan wallet not found là chưa có ví.
+    return (
+      status === 404 ||
+      status === 500 ||
+      message.includes("wallet") && message.includes("not found") ||
+      message.includes("no wallet")
+    );
+  };
+
+  const normalizeResponseData = (res) => {
+    return res?.data ?? res;
+  };
+
+  const normalizePageContent = (res) => {
+    const data = normalizeResponseData(res);
+
+    if (Array.isArray(data)) {
+      return data;
+    }
+
+    if (Array.isArray(data?.content)) {
+      return data.content;
+    }
+
+    if (Array.isArray(data?.data)) {
+      return data.data;
+    }
+
+    if (Array.isArray(data?.data?.content)) {
+      return data.data.content;
+    }
+
+    return [];
+  };
+
   const fetchWalletAndTransactions = async () => {
     setLoading(true);
     setError("");
     setNoWallet(false);
-    try {
-      // 1. Fetch current wallet
-      try {
-        const walletData = await walletApi.getMyWallet();
-        setWallet(walletData);
 
-        // 2. If wallet exists, fetch transactions
-        const txRes = await walletApi.getTransactions({ page: 0, size: 50 });
-        const txList = Array.isArray(txRes) ? txRes : txRes.content || [];
-        setTransactions(txList);
-      } catch (err) {
-        // If 404 or error status indicates no wallet, handle onboarding flow
-        if (err.status === 404 || err.message?.toLowerCase().includes("not found")) {
-          setNoWallet(true);
-        } else {
-          throw err;
-        }
-      }
+    try {
+      const walletRes = await walletApi.getMyWallet();
+      const walletData = normalizeResponseData(walletRes);
+
+      setWallet(walletData);
+
+      const txRes = await walletApi.getTransactions({ page: 0, size: 50 });
+      const txList = normalizePageContent(txRes);
+
+      setTransactions(txList);
     } catch (err) {
       console.error(err);
-      setError(err.message || "Failed to load wallet details.");
+
+      if (isWalletNotFoundError(err)) {
+        setNoWallet(true);
+        setWallet(null);
+        setTransactions([]);
+        setError("");
+      } else {
+        setError(err.message || "Failed to load wallet details.");
+      }
     } finally {
       setLoading(false);
     }
@@ -80,9 +122,17 @@ const WalletPage = () => {
   const handleOpenWallet = async () => {
     setLoading(true);
     setError("");
+
     try {
-      await walletApi.openWallet();
-      fetchWalletAndTransactions();
+      const walletRes = await walletApi.openWallet();
+      const walletData = normalizeResponseData(walletRes);
+
+      setWallet(walletData);
+      setNoWallet(false);
+
+      await fetchWalletAndTransactions();
+
+      window.dispatchEvent(new CustomEvent("wallet-updated"));
     } catch (err) {
       console.error(err);
       setError(err.message || "Failed to open wallet. Try again later.");
@@ -92,12 +142,14 @@ const WalletPage = () => {
 
   const handleTopUpSubmit = async (e) => {
     e.preventDefault();
+
     setTopUpError("");
     setErrors({});
 
-    const amountNum = parseFloat(topUpAmount);
+    const amountNum = Number(topUpAmount);
     const newErrors = {};
-    if (topUpAmount === "" || isNaN(amountNum)) {
+
+    if (topUpAmount === "" || Number.isNaN(amountNum)) {
       newErrors.topUpAmount = "Top-up amount is required.";
     } else if (amountNum <= 0) {
       newErrors.topUpAmount = "Top-up amount must be greater than 0.";
@@ -110,23 +162,28 @@ const WalletPage = () => {
     }
 
     setTopUpLoading(true);
+
     try {
       const payload = {
         amount: amountNum,
         description: topUpDesc || "Wallet Top Up",
       };
+
       await walletApi.topUp(payload);
+
       setTopUpAmount("");
       setTopUpDesc("");
       setErrors({});
-      fetchWalletAndTransactions();
-      
-      // Dispatch a custom event to notify MainLayout to refresh the balance!
-      // This satisfies Requirement 5: "dispatch a custom event like wallet-updated after top-up/checkout and listen in MainLayout."
+      setTopUpError("");
+
+      await fetchWalletAndTransactions();
+
       window.dispatchEvent(new CustomEvent("wallet-updated"));
     } catch (err) {
       console.error(err);
+
       setTopUpError(err.message || "Top-up failed.");
+
       if (err.errors) {
         setErrors(err.errors);
       }
@@ -135,47 +192,71 @@ const WalletPage = () => {
     }
   };
 
-  if (loading) return <LoadingState message="Connecting to secure wallet..." />;
-  if (error) return <ErrorState message={error} onRetry={fetchWalletAndTransactions} />;
+  if (loading) {
+    return <LoadingState message="Connecting to secure wallet..." />;
+  }
 
-  // Wallet onboarding flow (not opened yet)
+  if (error) {
+    return <ErrorState message={error} onRetry={fetchWalletAndTransactions} />;
+  }
+
   if (noWallet) {
     return (
-      <Box sx={{ maxWidth: 500, mx: "auto", mt: 6, textAlign: "center" }}>
-        <Card sx={{ p: 4, borderRadius: 3 }}>
-          <Stack spacing={3} alignItems="center">
-            <Avatar sx={{ width: 80, height: 80, bgcolor: "rgba(0, 132, 61, 0.1)", color: "primary.main" }}>
-              <WalletIcon sx={{ fontSize: 48 }} />
-            </Avatar>
-            <Box>
-              <Typography variant="h5" fontWeight={800} gutterBottom>
-                Open Your Store Wallet
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Keep cash in your digital store wallet for swift and safe checkout. Easily top up and get immediate refunds.
-              </Typography>
-            </Box>
-            <Button
-              variant="contained"
-              color="primary"
-              size="large"
-              onClick={handleOpenWallet}
-              sx={{ px: 4, py: 1.2, fontWeight: 700 }}
-            >
-              Open Digital Wallet
-            </Button>
-          </Stack>
-        </Card>
+      <Box>
+        <PageHeader
+          title="My Wallet"
+          subtitle="Open your digital wallet to top up and pay for your orders."
+        />
+
+        <Box sx={{ maxWidth: 540, mx: "auto", mt: 6, textAlign: "center" }}>
+          <Card sx={{ p: 4, borderRadius: 3 }}>
+            <Stack spacing={3} alignItems="center">
+              <Avatar
+                sx={{
+                  width: 80,
+                  height: 80,
+                  bgcolor: "rgba(0, 132, 61, 0.1)",
+                  color: "primary.main",
+                }}
+              >
+                <WalletIcon sx={{ fontSize: 48 }} />
+              </Avatar>
+
+              <Box>
+                <Typography variant="h5" fontWeight={800} gutterBottom>
+                  You don&apos;t have a wallet yet
+                </Typography>
+
+                <Typography variant="body2" color="text.secondary">
+                  Create your digital store wallet to top up balance and pay for
+                  your orders quickly.
+                </Typography>
+              </Box>
+
+              <Button
+                variant="contained"
+                color="primary"
+                size="large"
+                onClick={handleOpenWallet}
+                sx={{ px: 4, py: 1.2, fontWeight: 700 }}
+              >
+                Open Digital Wallet
+              </Button>
+            </Stack>
+          </Card>
+        </Box>
       </Box>
     );
   }
 
   return (
     <Box>
-      <PageHeader title="My Wallet" subtitle="Check your balance, top up, and review transaction logs." />
+      <PageHeader
+        title="My Wallet"
+        subtitle="Check your balance, top up, and review transaction logs."
+      />
 
       <Grid container spacing={4} sx={{ mb: 5 }}>
-        {/* Wallet Balance Card */}
         <Grid item xs={12} md={6}>
           <Card
             sx={{
@@ -190,7 +271,6 @@ const WalletPage = () => {
               overflow: "hidden",
             }}
           >
-            {/* Background design accents */}
             <Box
               sx={{
                 position: "absolute",
@@ -202,6 +282,7 @@ const WalletPage = () => {
                 background: "rgba(255, 255, 255, 0.05)",
               }}
             />
+
             <Box
               sx={{
                 position: "absolute",
@@ -219,8 +300,10 @@ const WalletPage = () => {
                 <Typography variant="h6" fontWeight={500} sx={{ opacity: 0.8 }}>
                   7-Eleven Store Wallet
                 </Typography>
+
                 <WalletIcon sx={{ fontSize: 32, opacity: 0.9 }} />
               </Stack>
+
               <Typography variant="caption" sx={{ opacity: 0.6 }}>
                 Secure Payment Balance
               </Typography>
@@ -240,13 +323,17 @@ const WalletPage = () => {
           </Card>
         </Grid>
 
-        {/* Top-up Form */}
         <Grid item xs={12} md={6}>
           <Card sx={{ height: "100%" }}>
             <CardContent sx={{ p: 3 }}>
-              <Typography variant="h6" fontWeight={750} sx={{ mb: 2, display: "flex", alignItems: "center", gap: 1 }}>
+              <Typography
+                variant="h6"
+                fontWeight={750}
+                sx={{ mb: 2, display: "flex", alignItems: "center", gap: 1 }}
+              >
                 <AddCardIcon color="primary" /> Quick Top-Up
               </Typography>
+
               <Divider sx={{ mb: 3 }} />
 
               <Box component="form" onSubmit={handleTopUpSubmit} noValidate>
@@ -261,12 +348,19 @@ const WalletPage = () => {
                     value={topUpAmount}
                     onChange={(e) => {
                       setTopUpAmount(e.target.value);
-                      if (errors.topUpAmount) setErrors({ ...errors, topUpAmount: "" });
+
+                      if (errors.topUpAmount) {
+                        setErrors((prev) => ({
+                          ...prev,
+                          topUpAmount: "",
+                        }));
+                      }
                     }}
-                    error={!!errors.topUpAmount}
+                    error={Boolean(errors.topUpAmount)}
                     helperText={errors.topUpAmount}
                     disabled={topUpLoading}
                     placeholder="e.g., 50000"
+                    inputProps={{ min: 1 }}
                   />
 
                   <TextField
@@ -286,7 +380,7 @@ const WalletPage = () => {
                     size="large"
                     disabled={topUpLoading}
                   >
-                    Proceed Top Up
+                    {topUpLoading ? "Processing..." : "Proceed Top Up"}
                   </Button>
                 </Stack>
               </Box>
@@ -295,17 +389,23 @@ const WalletPage = () => {
         </Grid>
       </Grid>
 
-      {/* Transaction History */}
       <Card>
         <CardContent sx={{ p: 3 }}>
-          <Typography variant="h6" fontWeight={750} sx={{ mb: 2, display: "flex", alignItems: "center", gap: 1 }}>
+          <Typography
+            variant="h6"
+            fontWeight={750}
+            sx={{ mb: 2, display: "flex", alignItems: "center", gap: 1 }}
+          >
             <HistoryIcon color="primary" /> Transaction logs
           </Typography>
+
           <Divider sx={{ mb: 3 }} />
 
           {transactions.length === 0 ? (
             <Box sx={{ py: 4, textAlign: "center" }}>
-              <Typography color="text.secondary">No transactions logged yet.</Typography>
+              <Typography color="text.secondary">
+                No transactions logged yet.
+              </Typography>
             </Box>
           ) : (
             <TableContainer component={Paper} elevation={0}>
@@ -319,12 +419,14 @@ const WalletPage = () => {
                     <TableCell align="right">Amount</TableCell>
                   </TableRow>
                 </TableHead>
+
                 <TableBody>
                   {transactions.map((tx) => {
                     const isCredit =
                       tx.type === "TOP_UP" ||
                       tx.type === "RECEIVE_PAYMENT" ||
                       tx.type === "REFUND";
+
                     return (
                       <TableRow key={tx.id} hover>
                         <TableCell>{tx.id}</TableCell>
