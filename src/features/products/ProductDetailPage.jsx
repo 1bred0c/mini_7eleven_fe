@@ -64,6 +64,24 @@ const ProductDetailPage = () => {
     }
   };
 
+  const handleQuantityInputChange = (value) => {
+  if (value === "") {
+    setQuantity(1);
+    return;
+  }
+
+  const numericValue = Number(value);
+
+  if (Number.isNaN(numericValue)) {
+    return;
+  }
+
+  const maxStock = product?.stockQuantity ? Number(product.stockQuantity) : 999;
+  const safeQuantity = Math.max(1, Math.min(numericValue, maxStock));
+
+  setQuantity(safeQuantity);
+};
+
   const handleCheckout = () => {
     if (!product) return;
     // Redirect to checkout with product and quantity in route state
@@ -157,14 +175,30 @@ const ProductDetailPage = () => {
                       <RemoveIcon />
                     </IconButton>
                     <TextField
-                      value={quantity}
-                      variant="standard"
-                      InputProps={{ disableUnderline: true }}
-                      inputProps={{
-                        style: { textAlign: "center", width: 40, fontWeight: 700 },
-                        readOnly: true,
-                      }}
-                    />
+  type="number"
+  value={quantity}
+  variant="standard"
+  onChange={(e) => handleQuantityInputChange(e.target.value)}
+  InputProps={{ disableUnderline: true }}
+  inputProps={{
+    min: 1,
+    max: product.stockQuantity,
+    style: {
+      textAlign: "center",
+      width: 48,
+      fontWeight: 700,
+    },
+  }}
+  sx={{
+    "& input::-webkit-outer-spin-button, & input::-webkit-inner-spin-button": {
+      WebkitAppearance: "none",
+      margin: 0,
+    },
+    "& input[type=number]": {
+      MozAppearance: "textfield",
+    },
+  }}
+/>
                     <IconButton onClick={handleIncrement} disabled={quantity >= product.stockQuantity}>
                       <AddIcon />
                     </IconButton>
