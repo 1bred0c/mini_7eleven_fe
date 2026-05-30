@@ -100,7 +100,36 @@ const CartPage = () => {
       setLoading(false);
     }
   };
+  const handleQuantityInputChange = (item, value) => {
+  if (value === "") {
+    updateQuantity(item.productId, 1);
+    return;
+  }
 
+  const numericValue = Number(value);
+
+  if (Number.isNaN(numericValue)) {
+    return;
+  }
+
+  const maxStock =
+    item.stockQuantity !== undefined && item.stockQuantity !== null
+      ? Number(item.stockQuantity)
+      : 999;
+
+  const safeQuantity = Math.max(1, Math.min(numericValue, maxStock));
+
+  updateQuantity(item.productId, safeQuantity);
+
+  if (validationErrors[item.productId]) {
+    setValidationErrors((prev) => {
+      const next = { ...prev };
+      delete next[item.productId];
+      return next;
+    });
+  }
+};
+  
   const handleCheckout = async () => {
     setSubmitError("");
     setValidationErrors({});
@@ -284,25 +313,61 @@ const CartPage = () => {
                               {formatCurrency(item.price)}
                             </TableCell>
                             <TableCell align="center">
-                              <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="center">
-                                <IconButton
-                                  size="small"
-                                  onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                                  disabled={item.quantity <= 1}
-                                >
-                                  <RemoveIcon fontSize="small" />
-                                </IconButton>
-                                <Typography sx={{ width: 30, textAlign: "center", fontWeight: 700 }}>
-                                  {item.quantity}
-                                </Typography>
-                                <IconButton
-                                  size="small"
-                                  onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                                  disabled={item.stockQuantity !== undefined && item.quantity >= item.stockQuantity}
-                                >
-                                  <AddIcon fontSize="small" />
-                                </IconButton>
-                              </Stack>
+                             <Stack
+  direction="row"
+  spacing={0.75}
+  alignItems="center"
+  justifyContent="center"
+>
+  <IconButton
+    size="small"
+    onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+    disabled={item.quantity <= 1}
+  >
+    <RemoveIcon fontSize="small" />
+  </IconButton>
+
+  <TextField
+    type="number"
+    size="small"
+    value={item.quantity}
+    onChange={(e) => handleQuantityInputChange(item, e.target.value)}
+    inputProps={{
+      min: 1,
+      max:
+        item.stockQuantity !== undefined && item.stockQuantity !== null
+          ? item.stockQuantity
+          : 999,
+      style: {
+        textAlign: "center",
+        fontWeight: 700,
+        padding: "8px 4px",
+      },
+    }}
+    sx={{
+      width: 72,
+      "& input::-webkit-outer-spin-button, & input::-webkit-inner-spin-button": {
+        WebkitAppearance: "none",
+        margin: 0,
+      },
+      "& input[type=number]": {
+        MozAppearance: "textfield",
+      },
+    }}
+  />
+
+  <IconButton
+    size="small"
+    onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+    disabled={
+      item.stockQuantity !== undefined &&
+      item.stockQuantity !== null &&
+      item.quantity >= item.stockQuantity
+    }
+  >
+    <AddIcon fontSize="small" />
+  </IconButton>
+</Stack>
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700, color: "secondary.main" }}>
                               {formatCurrency(item.price * item.quantity)}
