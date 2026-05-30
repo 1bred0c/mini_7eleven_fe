@@ -23,9 +23,11 @@ import {
   Grid,
   Typography,
   Card,
+  CardContent,
 } from "@mui/material";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import FilterListIcon from "@mui/icons-material/FilterList";
+
 import { orderApi } from "../../api/orderApi";
 import { formatCurrency, formatDateTime } from "../../utils/format";
 import StatusChip from "../../components/StatusChip";
@@ -63,6 +65,7 @@ const AdminOrdersPage = () => {
   const fetchOrders = async () => {
     setLoading(true);
     setError("");
+
     try {
       const params = {
         status: statusFilter || undefined,
@@ -71,7 +74,9 @@ const AdminOrdersPage = () => {
         page: page - 1,
         size: pageSize,
       };
+
       const res = await orderApi.getAdminOrders(params);
+
       setOrders(res.content || []);
       setTotalPages(res.totalPages || 1);
     } catch (err) {
@@ -100,8 +105,10 @@ const AdminOrdersPage = () => {
     setDialogError("");
     setDialogOpen(true);
     setDialogLoading(true);
+
     try {
       const fullOrder = await orderApi.getAdminOrderById(orderId);
+
       setSelectedOrder(fullOrder);
       setOrderStatusVal(fullOrder.status);
       setPaymentStatusVal(fullOrder.paymentStatus);
@@ -116,21 +123,26 @@ const AdminOrdersPage = () => {
   // Update order status trigger
   const handleUpdateStatus = async () => {
     if (!selectedOrder) return;
+
     setDialogLoading(true);
     setDialogError("");
+
     try {
       // 1. Update order status if changed
       if (orderStatusVal !== selectedOrder.status) {
         await orderApi.updateOrderStatus(selectedOrder.id, orderStatusVal);
       }
-      
+
       // 2. Update payment status if changed
       if (paymentStatusVal !== selectedOrder.paymentStatus) {
-        await orderApi.updateOrderPaymentStatus(selectedOrder.id, paymentStatusVal);
+        await orderApi.updateOrderPaymentStatus(
+          selectedOrder.id,
+          paymentStatusVal
+        );
       }
 
       setDialogOpen(false);
-      fetchOrders(); // Refresh table
+      fetchOrders();
     } catch (err) {
       console.error(err);
       setDialogError(err.message || "Failed to update order status details.");
@@ -169,10 +181,35 @@ const AdminOrdersPage = () => {
     }
   };
 
-  const statusOptions = selectedOrder ? getAvailableStatusOptions(selectedOrder.status) : [];
+  const statusOptions = selectedOrder
+    ? getAvailableStatusOptions(selectedOrder.status)
+    : [];
+
   const isStatusDisabled = selectedOrder
-    ? selectedOrder.status === "COMPLETED" || selectedOrder.status === "CANCELLED"
+    ? selectedOrder.status === "COMPLETED" ||
+      selectedOrder.status === "CANCELLED"
     : false;
+
+  // Overview stats for currently loaded page only
+  const paidRevenueOnPage = orders
+    .filter((order) => order.paymentStatus === "PAID")
+    .reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+
+  const pendingCount = orders.filter(
+    (order) => order.status === "PENDING"
+  ).length;
+
+  const preparingCount = orders.filter(
+    (order) => order.status === "PREPARING"
+  ).length;
+
+  const completedCount = orders.filter(
+    (order) => order.status === "COMPLETED"
+  ).length;
+
+  const cancelledCount = orders.filter(
+    (order) => order.status === "CANCELLED"
+  ).length;
 
   return (
     <div>
@@ -239,7 +276,11 @@ const AdminOrdersPage = () => {
             ))}
           </TextField>
 
-          <Button type="submit" variant="contained" startIcon={<FilterListIcon />}>
+          <Button
+            type="submit"
+            variant="contained"
+            startIcon={<FilterListIcon />}
+          >
             Filter
           </Button>
 
@@ -249,88 +290,151 @@ const AdminOrdersPage = () => {
         </Box>
       </Card>
 
+      {/* Overview cards - statistics for currently loaded orders page */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ borderRadius: 3, height: "100%" }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Orders on this page
+              </Typography>
+              <Typography variant="h5" fontWeight={800}>
+                {orders.length}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ borderRadius: 3, height: "100%" }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Paid revenue on this page
+              </Typography>
+              <Typography variant="h5" fontWeight={800} color="success.main">
+                {formatCurrency(paidRevenueOnPage)}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ borderRadius: 3, height: "100%" }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Pending / Preparing
+              </Typography>
+              <Typography variant="h5" fontWeight={800}>
+                {pendingCount} / {preparingCount}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ borderRadius: 3, height: "100%" }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Completed / Cancelled
+              </Typography>
+              <Typography variant="h5" fontWeight={800}>
+                {completedCount} / {cancelledCount}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
       {error && <ErrorState message={error} onRetry={fetchOrders} />}
 
       {loading ? (
-  <LoadingState message="Loading orders logs..." />
-) : orders.length === 0 ? (
-  <EmptyState
-    message="No orders registered yet"
-    description="Orders placed by users will appear here."
-  />
-) : (
-  <Stack spacing={4} alignItems="center">
-    <TableContainer component={Paper} elevation={1}>
-      <Table sx={{ minWidth: 800 }}>
-        <TableHead>
-          <TableRow>
-            <TableCell>Order ID</TableCell>
-            <TableCell>Date</TableCell>
-            <TableCell>Customer</TableCell>
-            <TableCell>Total Amount</TableCell>
-            <TableCell>Order Status</TableCell>
-            <TableCell>Payment Status</TableCell>
-            <TableCell align="right">Manage</TableCell>
-          </TableRow>
-        </TableHead>
+        <LoadingState message="Loading orders logs..." />
+      ) : orders.length === 0 ? (
+        <EmptyState
+          message="No orders registered yet"
+          description="Orders placed by users will appear here."
+        />
+      ) : (
+        <Stack spacing={4} alignItems="center">
+          <TableContainer component={Paper} elevation={1}>
+            <Table sx={{ minWidth: 800 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Order ID</TableCell>
+                  <TableCell>Date</TableCell>
+                  <TableCell>Customer</TableCell>
+                  <TableCell>Total Amount</TableCell>
+                  <TableCell>Order Status</TableCell>
+                  <TableCell>Payment Status</TableCell>
+                  <TableCell align="right">Manage</TableCell>
+                </TableRow>
+              </TableHead>
 
-        <TableBody>
-          {orders.map((order) => (
-            <TableRow key={order.id} hover>
-              <TableCell sx={{ fontWeight: 700 }}>#{order.id}</TableCell>
+              <TableBody>
+                {orders.map((order) => (
+                  <TableRow key={order.id} hover>
+                    <TableCell sx={{ fontWeight: 700 }}>
+                      #{order.id}
+                    </TableCell>
 
-              <TableCell>{formatDateTime(order.createdAt)}</TableCell>
+                    <TableCell>{formatDateTime(order.createdAt)}</TableCell>
 
-              <TableCell>
-  <Typography variant="body2" fontWeight={600}>
-    {order.customerName || "Unknown customer"}
-  </Typography>
-  <Typography variant="caption" color="text.secondary">
-    Account ID: {order.accountId || "N/A"}
-  </Typography>
-</TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={600}>
+                        {order.customerName || "Unknown customer"}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Account ID: {order.accountId || "N/A"}
+                      </Typography>
+                    </TableCell>
 
-              <TableCell sx={{ fontWeight: 700, color: "secondary.main" }}>
-                {formatCurrency(order.totalAmount)}
-              </TableCell>
+                    <TableCell sx={{ fontWeight: 700, color: "secondary.main" }}>
+                      {formatCurrency(order.totalAmount)}
+                    </TableCell>
 
-              <TableCell>
-                <StatusChip status={order.status} type="status" />
-              </TableCell>
+                    <TableCell>
+                      <StatusChip status={order.status} type="status" />
+                    </TableCell>
 
-              <TableCell>
-                <StatusChip status={order.paymentStatus} type="payment" />
-              </TableCell>
+                    <TableCell>
+                      <StatusChip status={order.paymentStatus} type="payment" />
+                    </TableCell>
 
-              <TableCell align="right">
-                <IconButton
-                  color="primary"
-                  onClick={() => handleOpenManage(order.id)}
-                >
-                  <VisibilityIcon />
-                </IconButton>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </TableContainer>
+                    <TableCell align="right">
+                      <IconButton
+                        color="primary"
+                        onClick={() => handleOpenManage(order.id)}
+                      >
+                        <VisibilityIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
 
-    {totalPages > 1 && (
-      <Pagination
-        count={totalPages}
-        page={page}
-        onChange={(event, value) => setPage(value)}
-        color="primary"
-        size="large"
-      />
-    )}
-  </Stack>
-)}
+          {totalPages > 1 && (
+            <Pagination
+              count={totalPages}
+              page={page}
+              onChange={(event, value) => setPage(value)}
+              color="primary"
+              size="large"
+            />
+          )}
+        </Stack>
+      )}
 
       {/* Details & Manage Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
         <DialogTitle>Order Details & Processing</DialogTitle>
+
         <DialogContent dividers>
           {dialogLoading ? (
             <LoadingState message="Fetching details..." />
@@ -344,65 +448,89 @@ const AdminOrdersPage = () => {
                   Ordered Items Checklist
                 </Typography>
                 <Divider sx={{ mb: 2 }} />
+
                 <Stack spacing={2} sx={{ mb: 3 }}>
                   {selectedOrder.items?.map((item) => (
-                    <Box key={item.id} sx={{ display: "flex", justifyContent: "space-between" }}>
+                    <Box
+                      key={item.id}
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                      }}
+                    >
                       <Box>
                         <Typography variant="body2" fontWeight={650}>
-                          {item.productName || item.product?.name || `Product ID: ${item.productId}`}
+                          {item.productName ||
+                            item.product?.name ||
+                            `Product ID: ${item.productId}`}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          Quantity: {item.quantity} x {formatCurrency(item.unitPrice)}
+                          Quantity: {item.quantity} x{" "}
+                          {formatCurrency(item.unitPrice)}
                         </Typography>
                       </Box>
+
                       <Typography variant="body2" fontWeight={700}>
                         {formatCurrency(item.subtotal)}
                       </Typography>
                     </Box>
                   ))}
+
                   <Divider />
+
                   <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                     <Typography variant="subtitle2" fontWeight={700}>
                       Total Order Amount:
                     </Typography>
-                    <Typography variant="subtitle2" fontWeight={850} color="secondary.main">
+                    <Typography
+                      variant="subtitle2"
+                      fontWeight={850}
+                      color="secondary.main"
+                    >
                       {formatCurrency(selectedOrder.totalAmount)}
                     </Typography>
                   </Box>
                 </Stack>
 
                 <Typography variant="subtitle2" fontWeight={750} sx={{ mb: 2 }}>
-  Delivery Address Details
-</Typography>
-<Divider sx={{ mb: 2 }} />
+                  Delivery Address Details
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
 
-<Stack spacing={0.5}>
-  <Typography variant="body2" fontWeight={700}>
-    Receiver: {selectedOrder.customerName}
-  </Typography>
+                <Stack spacing={0.5}>
+                  <Typography variant="body2" fontWeight={700}>
+                    Receiver: {selectedOrder.customerName}
+                  </Typography>
 
-  <Typography variant="caption" color="text.secondary">
-    Phone: {selectedOrder.phoneNumber}
-  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Phone: {selectedOrder.phoneNumber}
+                  </Typography>
 
-  <Typography variant="caption" color="text.secondary">
-    Address: {selectedOrder.address}
-  </Typography>
-</Stack>
-</Grid>
+                  <Typography variant="caption" color="text.secondary">
+                    Address: {selectedOrder.address}
+                  </Typography>
+                </Stack>
+              </Grid>
 
-{/* Status editing controls */}
-<Grid item xs={12} md={5}>
-  <Typography variant="subtitle2" fontWeight={750} sx={{ mb: 2 }}>
-    Fulfillment Controls
-  </Typography>
-  <Divider sx={{ mb: 2 }} />
+              {/* Status editing controls */}
+              <Grid item xs={12} md={5}>
+                <Typography variant="subtitle2" fontWeight={750} sx={{ mb: 2 }}>
+                  Fulfillment Controls
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
 
                 <Stack spacing={3}>
                   <Box>
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-                      Current Order Status: <strong>{selectedOrder.status}</strong>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      display="block"
+                      sx={{ mb: 1 }}
+                    >
+                      Current Order Status:{" "}
+                      <strong>{selectedOrder.status}</strong>
                     </Typography>
+
                     <TextField
                       select
                       fullWidth
@@ -418,17 +546,30 @@ const AdminOrdersPage = () => {
                         </MenuItem>
                       ))}
                     </TextField>
+
                     {isStatusDisabled && (
-                      <Typography variant="caption" color="error" sx={{ mt: 0.5, display: "block" }}>
-                        Fulfillment complete. Terminal states (COMPLETED/CANCELLED) cannot be changed.
+                      <Typography
+                        variant="caption"
+                        color="error"
+                        sx={{ mt: 0.5, display: "block" }}
+                      >
+                        Fulfillment complete. Terminal states
+                        (COMPLETED/CANCELLED) cannot be changed.
                       </Typography>
                     )}
                   </Box>
 
                   <Box>
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-                      Current Payment Status: <strong>{selectedOrder.paymentStatus}</strong>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      display="block"
+                      sx={{ mb: 1 }}
+                    >
+                      Current Payment Status:{" "}
+                      <strong>{selectedOrder.paymentStatus}</strong>
                     </Typography>
+
                     <TextField
                       select
                       fullWidth
@@ -446,23 +587,42 @@ const AdminOrdersPage = () => {
                   </Box>
 
                   <Box sx={{ bgcolor: "action.hover", p: 2, borderRadius: 1 }}>
-                    <Typography variant="caption" color="text.secondary" display="block">
-  Customer:
-</Typography>
-<Typography variant="body2" fontWeight={600}>
-  {selectedOrder.customerName || "Unknown customer"}
-</Typography>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      display="block"
+                    >
+                      Customer:
+                    </Typography>
+                    <Typography variant="body2" fontWeight={600}>
+                      {selectedOrder.customerName || "Unknown customer"}
+                    </Typography>
 
-<Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-  Account ID:
-</Typography>
-<Typography variant="body2" fontWeight={600}>
-  {selectedOrder.accountId || "N/A"}
-</Typography>
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      display="block"
+                      sx={{ mt: 1 }}
+                    >
+                      Account ID:
+                    </Typography>
+                    <Typography variant="body2" fontWeight={600}>
+                      {selectedOrder.accountId || "N/A"}
+                    </Typography>
+
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      display="block"
+                      sx={{ mt: 1 }}
+                    >
                       Payment Method Used:
                     </Typography>
-                    <Typography variant="body2" fontWeight={600} sx={{ textTransform: "capitalize" }}>
+                    <Typography
+                      variant="body2"
+                      fontWeight={600}
+                      sx={{ textTransform: "capitalize" }}
+                    >
                       {selectedOrder.paymentMethod?.replace(/_/g, " ")}
                     </Typography>
                   </Box>
@@ -471,10 +631,12 @@ const AdminOrdersPage = () => {
             </Grid>
           ) : null}
         </DialogContent>
+
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDialogOpen(false)} disabled={dialogLoading}>
             Cancel
           </Button>
+
           <Button
             onClick={handleUpdateStatus}
             variant="contained"
