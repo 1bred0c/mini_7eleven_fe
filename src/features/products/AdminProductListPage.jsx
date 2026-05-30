@@ -24,7 +24,7 @@ import {
   Card,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
-import DeleteIcon from "@mui/icons-material/Delete";
+import BlockIcon from "@mui/icons-material/Block";
 import AddIcon from "@mui/icons-material/Add";
 import LocalPizzaIcon from "@mui/icons-material/LocalPizza";
 import { productApi } from "../../api/productApi";
@@ -164,20 +164,25 @@ const AdminProductListPage = () => {
   };
 
   const handleDeleteConfirm = async () => {
-    if (!deleteId) return;
-    setDeleteLoading(true);
-    try {
-      await productApi.deleteProduct(deleteId);
-      setDeleteOpen(false);
-      fetchProducts();
-    } catch (err) {
-      console.error(err);
-      setError(err.message || "Failed to delete product.");
-      setDeleteOpen(false);
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
+  if (!deleteId) return;
+
+  setDeleteLoading(true);
+
+  try {
+    // Do not hard delete products because old orders may still reference them.
+    // Instead, mark the product as INACTIVE so it is hidden from user ordering.
+    await productApi.updateProductStatus(deleteId, "INACTIVE");
+
+    setDeleteOpen(false);
+    fetchProducts();
+  } catch (err) {
+    console.error(err);
+    setError(err.message || "Failed to deactivate product.");
+    setDeleteOpen(false);
+  } finally {
+    setDeleteLoading(false);
+  }
+};
 
   return (
     <div>
@@ -333,9 +338,9 @@ const AdminProductListPage = () => {
                       >
                         <EditIcon />
                       </IconButton>
-                      <IconButton color="error" onClick={() => handleOpenDelete(product.id)}>
-                        <DeleteIcon />
-                      </IconButton>
+                      <IconButton color="warning" onClick={() => handleOpenDelete(product.id)}>
+  <BlockIcon />
+</IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -386,14 +391,14 @@ const AdminProductListPage = () => {
 
       {/* Delete Confirmation */}
       <ConfirmDialog
-        open={deleteOpen}
-        title="Delete Product"
-        message="Are you sure you want to delete this product catalog item? This will remove it permanently."
-        confirmText="Delete"
-        loading={deleteLoading}
-        onConfirm={handleDeleteConfirm}
-        onClose={() => setDeleteOpen(false)}
-      />
+  open={deleteOpen}
+  title="Deactivate Product"
+  message="This product will be marked as INACTIVE and hidden from users. Existing orders will not be affected."
+  confirmText="Deactivate"
+  loading={deleteLoading}
+  onConfirm={handleDeleteConfirm}
+  onClose={() => setDeleteOpen(false)}
+/>
     </div>
   );
 };
